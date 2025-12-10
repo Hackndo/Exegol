@@ -491,6 +491,7 @@ class ExegolTUI:
                       f"{'[bright_black]({})[/bright_black]'.format(container.config.getMyResourcesPath()) if container.config.isMyResourcesEnable() else ''}")
         recap.add_row("[bold blue]Shell logging[/bold blue]", boolFormatter(container.config.isShellLoggingEnable()) +
                       f"{'[bright_black](/workspace/logs)[/bright_black]' if container.config.isShellLoggingEnable() else ''}")
+        recap.add_row("[bold blue]JSON Shell logging[/bold blue]", boolFormatter(container.config.isJsonShellLoggingEnable()))
         if "N/A" not in container.config.getVpnName():
             recap.add_row("[bold blue]VPN[/bold blue]", container.config.getVpnName())
         recap.add_row("[bold blue]Privileged[/bold blue]", '[orange3]On :fire:[/orange3]' if container.config.getPrivileged() else '[green]Off :heavy_check_mark:[/green]')

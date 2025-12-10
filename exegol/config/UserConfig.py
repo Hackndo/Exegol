@@ -35,6 +35,9 @@ class UserConfig(DataFileUtils, metaclass=MetaSingleton):
         self.shell_logging_method: str = "asciinema"
         self.shell_logging_compress: bool = True
         self.always_enable_shell_logging: bool = False
+        self.json_shell_logging_path: Path = ConstantConfig.exegol_config_path / "logs"
+        self.json_shell_logging_gid: int = -1
+        self.always_enable_json_shell_logging: bool = False
         # Desktop
         self.desktop_default_enable: bool = False
         self.desktop_default_localhost: bool = True
@@ -74,6 +77,9 @@ volumes:
     
     # When containers do not have an explicitly declared workspace, a dedicated folder will be created at this location to share the workspace with the host but also to save the data after deleting the container
     private_workspace_path: {self.private_volume_path}
+    
+    # Folder on the host where the JSON logs from the exegol containers will be stored. Please note that these logs may contain sensitive data. (Enterprise feature)
+    json_shell_logging_path: {self.json_shell_logging_path}
 
 config:
     # Enables automatic check for wrapper updates
@@ -101,6 +107,15 @@ config:
         
         # Enable automatic compression of log files (with gzip)
         enable_log_compression: {self.shell_logging_compress}
+    
+    # Change the configuration of the shell logging functionality (Enterprise feature)
+    json_shell_logging:
+        # Always enable json shell logging
+        always_enable: {self.always_enable_json_shell_logging}
+        
+        # If the agent belongs to a different group than the user, it is possible to share the log files in read-only mode with another group. 
+        # Use -1 to refer to the group of the user who is using exegol.
+        log_group_gid: {self.json_shell_logging_gid}
         
     # Configure your Exegol Desktop
     desktop:
@@ -132,7 +147,7 @@ config:
         # By default, docker creates huge subnets, but exegol overrides this by using a much smaller subnet mask to optimize the use of network slots. (default to /28 with CIDR format)
         exegol_default_netmask: {self.network_default_netmask}
 
-    # List of custom images from non-official private registry. (Enterprise feature only) More info here: https://docs.exegol.com/wrapper/configuration#custom-images
+    # List of custom images from non-official private registry. (Enterprise feature) More info here: https://docs.exegol.com/wrapper/configuration#custom-images
     custom_images:
     #  - docker.io/user/registry
 """
@@ -158,6 +173,7 @@ config:
         self.private_volume_path = self._load_config_path(volumes_data, 'private_workspace_path', self.private_volume_path)
         self.exegol_resources_path = self._load_config_path(volumes_data, 'exegol_resources_path', self.exegol_resources_path)
         self.exegol_images_path = self._load_config_path(volumes_data, 'exegol_images_path', self.exegol_images_path)
+        self.json_shell_logging_path = self._load_config_path(volumes_data, 'json_shell_logging_path', self.json_shell_logging_path)
 
         # Config section
         config_data = self._raw_data.get("config", {})
@@ -184,6 +200,11 @@ config:
         self.shell_logging_compress = self._load_config_bool(shell_logging_data, 'enable_log_compression', self.shell_logging_compress)
         self.always_enable_shell_logging = self._load_config_bool(shell_logging_data, 'always_enable', self.always_enable_shell_logging)
 
+        # JSON Shell_logging section
+        json_shell_logging_data = config_data.get("json_shell_logging", {})
+        self.always_enable_json_shell_logging = self._load_config_bool(json_shell_logging_data, 'always_enable', self.always_enable_json_shell_logging)
+        self.json_shell_logging_gid = self._load_config_int(json_shell_logging_data, 'log_group_gid', self.json_shell_logging_gid)
+        
         # Desktop section
         desktop_data = config_data.get("desktop", {})
         self.desktop_default_enable = self._load_config_bool(desktop_data, 'enabled_by_default', self.desktop_default_enable)
@@ -221,6 +242,9 @@ config:
             f"Always enable Shell logging: [blue]{boolFormatter(self.always_enable_shell_logging)}[/blue]",
             f"Shell logging method: [blue]{self.shell_logging_method}[/blue]",
             f"Shell logging compression: {boolFormatter(self.shell_logging_compress)}",
+            f"Always enable JSON Shell logging: [blue]{boolFormatter(self.always_enable_json_shell_logging)}[/blue]",
+            f"JSON Shell logging path: [magenta]{self.json_shell_logging_path}[/magenta]",
+            f"JSON Shell logging GID: [magenta]{self.json_shell_logging_gid}[/magenta]",
             f"Desktop enabled by default: {boolFormatter(self.desktop_default_enable)}",
             f"Desktop default protocol: [blue]{self.desktop_default_proto}[/blue]",
             f"Desktop default host: [blue]{'localhost' if self.desktop_default_localhost else '0.0.0.0'}[/blue]",

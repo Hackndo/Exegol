@@ -11,6 +11,7 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-shebang-scripts-are-executable
+        exclude: 'exegol/utils/imgsync/shell_script/'  # Hooks dont need to be executable
       - id: check-case-conflict
       - id: name-tests-test
       - id: check-illegal-windows-names
@@ -29,6 +30,7 @@ repos:
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
+        exclude: 'exegol/utils/imgsync/shell_script/zsh_hooks.sh'  # Shellcheck doesn't support zsh
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: 'v1.15.0'
     hooks:

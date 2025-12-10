@@ -178,6 +178,8 @@ class DataFileUtils:
         :return: This function return the value for the corresponding config_name
         """
         config = cast(Union[str, int], self.__load_config(data, config_name, default, choices))
+        if isinstance(config, int):
+            return config
         try:
             return int(config)
         except ValueError:

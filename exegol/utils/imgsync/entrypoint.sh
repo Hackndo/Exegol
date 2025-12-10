@@ -7,6 +7,9 @@ function exegol_init() {
   [ -f /etc/hosts.backup ] && cp -a /etc/hosts.backup /etc/hosts && rm /etc/hosts.backup
   # Setup default user shell to startup script
   usermod -s "/.exegol/spawn.sh" root > /dev/null
+  # Patch zsh.d directory for older images (before 3.1.12) // TODO remove in 2027
+  grep 'source /etc/zsh.d/*' /etc/zsh/zshrc || echo "test -d /etc/zsh.d && source /etc/zsh.d/*" >> /etc/zsh/zshrc
+  grep 'source /etc/bash.d/*' /etc/bash.bashrc || echo "test -d /etc/bash.d && source /etc/bash.d/*" >> /etc/bash.bashrc
 }
 
 # Function specific

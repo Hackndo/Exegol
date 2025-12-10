@@ -248,6 +248,12 @@ class ContainerCreation(ContainerSelector, ImageSelector):
                               help="The specified comment will be added to the container info",
                               completer=VoidCompleter)
 
+        self.json_log = Option("-jl", "--json-log",
+                               dest="json_log",
+                               action="store_true",
+                               default=UserConfig().always_enable_json_shell_logging,
+                               help=f"Enable json shell logging on exegol container (default: {'[green]Enabled[/green]' if UserConfig().always_enable_json_shell_logging else '[red]Disabled[/red]'})")
+
         groupArgs.append(GroupArg({"arg": self.workspace_path, "required": False},
                                   {"arg": self.mount_current_dir, "required": False},
                                   {"arg": self.update_fs_perms, "required": False},
@@ -256,6 +262,7 @@ class ContainerCreation(ContainerSelector, ImageSelector):
                                   {"arg": self.hostname, "required": False},
                                   {"arg": self.privileged, "required": False},
                                   {"arg": self.devices, "required": False},
+                                  {"arg": self.json_log, "required": False},
                                   {"arg": self.X11, "required": False},
                                   {"arg": self.my_resources, "required": False},
                                   {"arg": self.exegol_resources, "required": False},

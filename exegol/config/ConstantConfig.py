@@ -18,6 +18,10 @@ class ConstantConfig:
     entrypoint_context_path_obj: Path = src_root_path_obj / "exegol/utils/imgsync/entrypoint.sh"
     # Path of the spawn.sh
     spawn_context_path_obj: Path = src_root_path_obj / "exegol/utils/imgsync/spawn.sh"
+    # Path of json shell logging scripts
+    json_logging_zsh_context_path_obj: Path = src_root_path_obj / "exegol/utils/imgsync/shell_script/zsh_hooks.sh"
+    json_logging_bash_context_path_obj: Path = src_root_path_obj / "exegol/utils/imgsync/shell_script/bash_hooks.sh"
+    json_logger_context_path_obj: Path = src_root_path_obj / "exegol/utils/imgsync/json_shell_logging/json_shell_logger.py"
     # Path to the EULA docs
     eula_path: Path = src_root_path_obj / "exegol/utils/docs/eula.md"
     # Exegol config directory
