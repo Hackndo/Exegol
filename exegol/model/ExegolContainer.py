@@ -23,6 +23,7 @@ from exegol.model.ExegolImage import ExegolImage
 from exegol.model.SelectableInterface import SelectableInterface
 from exegol.utils.ContainerLogStream import ContainerLogStream
 from exegol.utils.ExeLog import logger
+from exegol.utils.FsUtils import secure_remove
 from exegol.utils.GuiUtils import GuiUtils
 from exegol.utils.SessionHandler import SessionHandler
 from exegol.utils.imgsync.ImageScriptSync import ImageScriptSync
@@ -307,6 +308,7 @@ class ExegolContainer(ExegolContainerTemplate, SelectableInterface):
         """
         if not container_only:
             await self.__removeVolume()
+        # Stop after workspace removal to support in-container backup removal
         await self.stop(timeout=2)
         have_backup = backup_history is not None and len(backup_history) > 0
         backup_text = f" and {len(backup_history)} backup containers" if have_backup and backup_history is not None else ""
@@ -349,7 +351,23 @@ class ExegolContainer(ExegolContainerTemplate, SelectableInterface):
         return result
 
     async def __removeVolume(self) -> None:
-        """Remove private workspace volume directory if exist"""
+        """Remove logs and private workspace volume directory if exist"""
+        if self.config.isJsonShellLoggingEnable():
+            log_file = self.config.getJsonShellLoggingPath()
+            if log_file and log_file.is_file():
+                if log_file.stat().st_size == 0 or await ExegolRich.Confirm(f"Do you want to remove your JSON shell logging history?", default=False):
+                    try:
+                        async with ExegolStatus(f"Removing json shell history", spinner_style="blue"):
+                            secure_remove(log_file)
+                        logger.success("JSON Shell logging history removed successfully")
+                    except PermissionError as e:
+                        logger.info(f"Deleting the JSON Shell logging history file from the [green]{self.name}[/green] container as root")
+                        if not self.isRunning():
+                            await self.__start_container()
+                        # If the host can't remove the container's file, the shred command is exec from the container itself as root
+                        await self.exec("shred -fz /var/log/exegol/shell_commands.json", as_daemon=False, quiet=True)
+                        logger.debug(f"Error during workspace logs removal: {e}")
+                        logger.error(f"Exegol cannot remove the JSON shell logging history [magenta]{log_file}[/magenta], please remove it manually.")
         volume_path = self.config.getPrivateVolumePath()
         # TODO add backup
         if volume_path != '':
@@ -398,6 +416,7 @@ class ExegolContainer(ExegolContainerTemplate, SelectableInterface):
                         return
                     logger.verbose(f"Removing workspace volume")
                     # Try to remove files from the host with user permission (work only without sub-directory)
+                    # TODO improve workspace removal with shred
                     shutil.rmtree(volume_path)
             except PermissionError:
                 logger.info(f"Deleting the workspace files from the [green]{self.name}[/green] container as root")
@@ -408,7 +427,7 @@ class ExegolContainer(ExegolContainerTemplate, SelectableInterface):
                 try:
                     shutil.rmtree(volume_path)
                 except PermissionError:
-                    logger.warning(f"I don't have the rights to remove [magenta]{volume_path}[/magenta] (do it yourself)")
+                    logger.warning(f"Exegol don't have the rights to remove [magenta]{volume_path}[/magenta] (do it yourself)")
                     return
             logger.success("Private workspace volume removed successfully")
         else:

@@ -140,3 +140,35 @@ def mkdir(path: Path) -> None:
         pass
     except (FileNotFoundError, PermissionError):
         logger.error(f"Unable to create directory {path}. Please check your file permissions.")
+
+def secure_remove(file_path: Path, passes=3) -> None:
+    """Overwrite a regular file with random data and remove it.
+
+    Attention: does NOT guarantee physical secure erase on SSD / COW / journaled FS.
+    """
+    if not file_path.is_file():
+        raise NotImplementedError("Can only securely remove regular files")
+
+    file_size = file_path.stat().st_size
+    if file_size == 0:
+        file_path.unlink()
+        return
+
+    file_size = file_path.stat().st_size
+    with open(file_path, 'rb+') as f:
+        chunk_size = 1024 * 1024
+        for _ in range(max(1, passes)):
+            f.seek(0)
+            remaining = file_size
+            # Write chunk by chunk to avoid using too much memory
+            while remaining > 0:
+                to_write = min(chunk_size, remaining)
+                f.write(os.urandom(to_write))
+                remaining -= to_write
+            f.flush()
+            os.fsync(f.fileno())
+
+        f.truncate(0)
+        f.flush()
+        os.fsync(f.fileno())
+    file_path.unlink()

@@ -23,6 +23,7 @@ from exegol.console.cli.SyntaxFormat import SyntaxFormat
 from exegol.exceptions.ExegolExceptions import ProtocolNotSupported, CancelOperation, InteractiveError
 from exegol.model.ExegolModules import ExegolModules
 from exegol.model.ExegolNetwork import ExegolNetwork, ExegolNetworkMode, DockerDrivers
+from exegol.model.StaticPath import StaticPath
 from exegol.utils import FsUtils
 from exegol.utils.ExeLog import logger, ExeLog
 from exegol.utils.FsUtils import check_sysctl_value, mkdir
@@ -49,7 +50,7 @@ class ContainerConfig:
     __verbose_only_envs = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE", "XDG_RUNTIME_DIR", "PATH", "TZ", "_JAVA_OPTIONS"]
     __verbose_only_mounts = ['/tmp/.X11-unix', '/opt/resources', '/etc/localtime',
                              '/etc/timezone', '/my-resources', '/opt/my-resources',
-                             '/.exegol/entrypoint.sh', '/.exegol/spawn.sh', '/tmp/wayland-0', '/tmp/wayland-1',
+                             '/.exegol/entrypoint.sh', StaticPath.EXEGOL_SPAWN_CONTAINER.value, '/tmp/wayland-0', '/tmp/wayland-1',
                              '/etc/zsh.d/shell_logging', '/etc/bash.d/shell_logging', '/.exegol/json_shell_logger.py', '/var/log/exegol/shell_commands.json']
 
     # Whitelist device for Docker Desktop
@@ -129,7 +130,7 @@ class ContainerConfig:
         self.__container_entrypoint: List[str] = self.__default_entrypoint
         self.__vpn_path: Optional[Path] = None
         self.__shell_logging: bool = False
-        self.__json_shell_logging: bool = False
+        self.__json_shell_logging_path: Optional[Path] = None
         # Entrypoint features
         self.legacy_entrypoint: bool = True
         self.__vpn_mode: Optional[str] = None
@@ -277,17 +278,16 @@ class ContainerConfig:
             elif "/workspace" in destination:
                 # Workspace are always bind mount
                 assert src_path is not None
-                obj_path = cast(PurePath, src_path)
-                logger.debug(f"└── Loading workspace volume source : {obj_path}")
+                logger.debug(f"└── Loading workspace volume source : {src_path}")
                 self.__disable_workspace = False
                 # TODO use label to identify manage workspace and support cross env removing
-                if obj_path is not None and obj_path.name == name and \
-                        (obj_path.parent.name == "shared-data-volumes" or obj_path.parent == UserConfig().private_volume_path):  # Check legacy path and new custom path
+                if src_path is not None and src_path.name == name and \
+                        (src_path.parent.name == "shared-data-volumes" or src_path.parent == UserConfig().private_volume_path):  # Check legacy path and new custom path
                     logger.debug("└── Private workspace detected")
-                    self.__workspace_dedicated_path = str(obj_path)
+                    self.__workspace_dedicated_path = str(src_path)
                 else:
                     logger.debug("└── Custom workspace detected")
-                    self.__workspace_custom_path = str(obj_path)
+                    self.__workspace_custom_path = str(src_path)
             elif "/.exegol/vpn" in destination or destination.startswith("/etc/wireguard/"):
                 # VPN are always bind mount
                 assert src_path is not None
@@ -303,8 +303,10 @@ class ContainerConfig:
                 ovpn_parameters.append(f"--auth-user-pass /.exegol/vpn/auth/creds.txt")
             elif destination == "/.exegol/spawn.sh":
                 self.__wrapper_start_enabled = True
-            elif destination == "/.exegol/json_shell_logger.py":
-                self.__json_shell_logging = True
+            elif destination == "/var/log/exegol/shell_commands.json":
+                # JSL are always bind mount
+                assert src_path is not None
+                self.__json_shell_logging_path = Path(src_path)
         if len(ovpn_parameters) > 0:
             self.__vpn_parameters = ' '.join(ovpn_parameters)
 
@@ -647,12 +649,11 @@ class ContainerConfig:
         if not SessionHandler().enterprise_feature_access():
             logger.warning("Exegol json logging is only available for Enterprise users.")
             return
-        if not self.__json_shell_logging:
+        if not self.isJsonShellLoggingEnable():
             logger.verbose("Config: Enabling JSON shell logging")
             self.addVolume(ConstantConfig.json_logging_zsh_context_path_obj, "/etc/zsh.d/shell_logging", read_only=True, must_exist=True)
             self.addVolume(ConstantConfig.json_logging_bash_context_path_obj, "/etc/bash.d/shell_logging", read_only=True, must_exist=True)
             self.addVolume(ConstantConfig.json_logger_context_path_obj, "/.exegol/json_shell_logger.py", read_only=True, must_exist=True)
-            self.__json_shell_logging = True
             host_log_path: Path = UserConfig().json_shell_logging_path
             # Create parent directory if needed
             if not host_log_path.exists():
@@ -669,16 +670,17 @@ class ContainerConfig:
                     file_gid = user_gid
                 os.chown(host_log_path, 0, file_gid)
             self.addVolume(host_log_path, "/var/log/exegol/shell_commands.json")
+            self.__json_shell_logging_path = host_log_path
 
     def __disableJsonLogging(self) -> None:
         """Procedure to disable exegol json shell logging feature"""
-        if self.__json_shell_logging:
+        if self.isJsonShellLoggingEnable():
             logger.verbose("Config: Disabling JSON shell logging")
             self.removeVolume(container_path="/etc/zsh.d/shell_logging")
             self.removeVolume(container_path="/etc/bash.d/shell_logging")
             self.removeVolume(container_path="/.exegol/json_shell_logger.py")
             self.removeVolume(container_path="/var/log/exegol/shell_commands.json")
-            self.__json_shell_logging = False
+            self.__json_shell_logging_path = None
 
     def isDesktopEnabled(self) -> bool:
         return self.__desktop_proto is not None
@@ -1222,7 +1224,11 @@ class ContainerConfig:
 
     def isJsonShellLoggingEnable(self) -> bool:
         """Return if the feature 'json shell logging' is enabled in this container config"""
-        return self.__json_shell_logging
+        return self.__json_shell_logging_path is not None
+
+    def getJsonShellLoggingPath(self) -> Optional[Path]:
+        """Get host path to Json shell logging file"""
+        return self.__json_shell_logging_path
 
     def isGUIEnable(self) -> bool:
         """Return if the feature 'GUI' is enabled in this container config"""
@@ -1658,8 +1664,8 @@ class ContainerConfig:
             result += f"{getColor(self.__my_resources)[0]}My resources: {boolFormatter(self.__my_resources)}{getColor(self.__my_resources)[1]}{os.linesep}"
         if verbose or self.__shell_logging:
             result += f"{getColor(self.__shell_logging)[0]}Shell logging: {boolFormatter(self.__shell_logging)}{getColor(self.__shell_logging)[1]}{os.linesep}"
-        if verbose or self.__json_shell_logging:
-            result += f"{getColor(self.__json_shell_logging)[0]}JSON shell logging: {boolFormatter(self.__json_shell_logging)}{getColor(self.__json_shell_logging)[1]}{os.linesep}"
+        if verbose or self.isJsonShellLoggingEnable():
+            result += f"{getColor(self.isJsonShellLoggingEnable())[0]}JSON shell logging: {boolFormatter(self.isJsonShellLoggingEnable())}{getColor(self.isJsonShellLoggingEnable())[1]}{os.linesep}"
         result = result.strip()
         if not result:
             return "[i][bright_black]Default configuration[/bright_black][/i]"
