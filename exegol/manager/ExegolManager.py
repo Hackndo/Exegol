@@ -7,6 +7,7 @@ from typing import Union, List, Tuple, Optional, cast, Sequence, Type
 from exegol.config.ConstantConfig import ConstantConfig
 from exegol.config.EnvInfo import EnvInfo
 from exegol.config.UserConfig import UserConfig
+from exegol.config.StaticContainerPath import StaticContainerPath
 from exegol.console import ConsoleFormat
 from exegol.console.ConsoleFormat import boolFormatter
 from exegol.console.ExegolPrompt import ExegolRich
@@ -572,7 +573,7 @@ class ExegolManager:
         model.config.disableDefaultWorkspace()
 
         # Mount entrypoint as a volume (because in tmp mode the container is created with run instead of create method)
-        model.config.addVolume(ConstantConfig.entrypoint_context_path_obj, "/.exegol/entrypoint.sh", must_exist=True, read_only=True)
+        model.config.addVolume(ConstantConfig.entrypoint_context_path_obj, StaticContainerPath.EXEGOL_ENTRYPOINT.value, must_exist=True, read_only=True)
 
         container = DockerUtils().createContainer(model, temporary=True)
         await container.postCreateSetup(is_temporary=True)

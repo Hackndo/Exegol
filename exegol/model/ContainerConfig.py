@@ -16,6 +16,7 @@ from docker.types import Mount
 from exegol.config.ConstantConfig import ConstantConfig
 from exegol.config.EnvInfo import EnvInfo
 from exegol.config.UserConfig import UserConfig
+from exegol.config.StaticContainerPath import StaticContainerPath
 from exegol.console.ConsoleFormat import boolFormatter, getColor
 from exegol.console.ExegolPrompt import ExegolRich
 from exegol.console.cli.ParametersManager import ParametersManager
@@ -23,7 +24,6 @@ from exegol.console.cli.SyntaxFormat import SyntaxFormat
 from exegol.exceptions.ExegolExceptions import ProtocolNotSupported, CancelOperation, InteractiveError
 from exegol.model.ExegolModules import ExegolModules
 from exegol.model.ExegolNetwork import ExegolNetwork, ExegolNetworkMode, DockerDrivers
-from exegol.model.StaticPath import StaticPath
 from exegol.utils import FsUtils
 from exegol.utils.ExeLog import logger, ExeLog
 from exegol.utils.FsUtils import check_sysctl_value, mkdir
@@ -38,7 +38,7 @@ class ContainerConfig:
     """Configuration class of an exegol container"""
 
     # Default hardcoded value
-    __default_entrypoint = ["/bin/bash", "/.exegol/entrypoint.sh"]
+    __default_entrypoint = ["/bin/bash", StaticContainerPath.EXEGOL_ENTRYPOINT.value]
     __default_shm_size = "64M"
     __fallback_network_mode = ExegolNetworkMode[UserConfig().network_fallback_mode.lower()]
 
@@ -48,10 +48,21 @@ class ContainerConfig:
 
     # Verbose only filters
     __verbose_only_envs = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE", "XDG_RUNTIME_DIR", "PATH", "TZ", "_JAVA_OPTIONS"]
-    __verbose_only_mounts = ['/tmp/.X11-unix', '/opt/resources', '/etc/localtime',
-                             '/etc/timezone', '/my-resources', '/opt/my-resources',
-                             '/.exegol/entrypoint.sh', StaticPath.EXEGOL_SPAWN_CONTAINER.value, '/tmp/wayland-0', '/tmp/wayland-1',
-                             '/etc/zsh.d/shell_logging', '/etc/bash.d/shell_logging', '/.exegol/json_shell_logger.py', '/var/log/exegol/shell_commands.json']
+    __verbose_only_mounts = ['/tmp/.X11-unix',
+                             StaticContainerPath.EXEGOL_RESOURCES.value,
+                             '/etc/localtime',
+                             '/etc/timezone',
+                             '/my-resources',
+                             StaticContainerPath.MY_RESOURCES.value,
+                             StaticContainerPath.EXEGOL_ENTRYPOINT.value,
+                             StaticContainerPath.EXEGOL_SPAWN.value,
+                             '/tmp/wayland-0',
+                             '/tmp/wayland-1',
+                             StaticContainerPath.JSON_SHELL_LOGGING_ZSH.value,
+                             StaticContainerPath.JSON_SHELL_LOGGING_BASH.value,
+                             StaticContainerPath.JSON_SHELL_LOGGER.value,
+                             StaticContainerPath.JSON_SHELL_LOGGING_LOG.value
+                             ]
 
     # Whitelist device for Docker Desktop
     __whitelist_dd_devices = ["/dev/net/tun", "/dev/fuse"]
@@ -108,7 +119,7 @@ class ContainerConfig:
         self.__gui_engine: List[str] = []
         self.__share_timezone: bool = False
         self.__my_resources: bool = False
-        self.__my_resources_path: str = "/opt/my-resources"
+        self.__my_resources_path: str = StaticContainerPath.MY_RESOURCES.value
         self.__exegol_resources: bool = False
         self.__networks: List[ExegolNetwork] = []
         self.__privileged: bool = False
@@ -157,7 +168,7 @@ class ContainerConfig:
             self.__parseContainerConfig(container)
         else:
             self.__wrapper_start_enabled = True
-            self.addVolume(str(ConstantConfig.spawn_context_path_obj), "/.exegol/spawn.sh", read_only=True, must_exist=True)
+            self.addVolume(str(ConstantConfig.spawn_context_path_obj), StaticContainerPath.EXEGOL_SPAWN.value, read_only=True, must_exist=True)
             # After __init__, await self.configFromUser() should be called
 
     # ===== Config parsing section =====
@@ -270,9 +281,9 @@ class ContainerConfig:
             destination = share.get('Destination', '')
             if destination in ["/etc/timezone", "/etc/localtime"]:
                 self.__share_timezone = True
-            elif "/opt/resources" in destination:
+            elif StaticContainerPath.EXEGOL_RESOURCES.value in destination:
                 self.__exegol_resources = True
-            elif "/opt/my-resources" in destination:
+            elif StaticContainerPath.MY_RESOURCES.value in destination:
                 self.__my_resources = True
                 self.__my_resources_path = destination
             elif "/workspace" in destination:
@@ -299,11 +310,11 @@ class ContainerConfig:
                     self.__vpn_mode = "wgconf"
                     self.__vpn_parameters = Path(destination).name[:-5]
                 logger.debug(f"└── Loading VPN config: {self.__vpn_path.name}")
-            elif destination == "/.exegol/vpn/auth/creds.txt":
-                ovpn_parameters.append(f"--auth-user-pass /.exegol/vpn/auth/creds.txt")
-            elif destination == "/.exegol/spawn.sh":
+            elif destination == StaticContainerPath.OPENVPN_CREDS_FILE.value:
+                ovpn_parameters.append(f"--auth-user-pass " + StaticContainerPath.OPENVPN_CREDS_FILE.value)
+            elif destination == StaticContainerPath.EXEGOL_SPAWN.value:
                 self.__wrapper_start_enabled = True
-            elif destination == "/var/log/exegol/shell_commands.json":
+            elif destination == StaticContainerPath.JSON_SHELL_LOGGING_LOG.value:
                 # JSL are always bind mount
                 assert src_path is not None
                 self.__json_shell_logging_path = Path(src_path)
@@ -591,14 +602,14 @@ class ContainerConfig:
             logger.verbose("Config: Enabling my-resources volume")
             self.__my_resources = True
             # Adding volume config
-            self.addVolume(UserConfig().my_resources_path, '/opt/my-resources', enable_sticky_group=True, force_sticky_group=True)
+            self.addVolume(UserConfig().my_resources_path, StaticContainerPath.MY_RESOURCES.value, enable_sticky_group=True, force_sticky_group=True)
 
     def __disableMyResources(self) -> None:
         """Procedure to disable shared volume feature (Only for interactive config)"""
         if self.__my_resources:
             logger.verbose("Config: Disabling my-resources volume")
             self.__my_resources = False
-            self.removeVolume(container_path='/opt/my-resources')
+            self.removeVolume(container_path=StaticContainerPath.MY_RESOURCES.value)
 
     async def enableExegolResources(self) -> bool:
         """Procedure to enable exegol resources volume feature"""
@@ -615,7 +626,7 @@ class ContainerConfig:
             logger.verbose("Config: Enabling exegol resources volume")
             self.__exegol_resources = True
             # Adding volume config
-            self.addVolume(UserConfig().exegol_resources_path, '/opt/resources')
+            self.addVolume(UserConfig().exegol_resources_path, StaticContainerPath.EXEGOL_RESOURCES.value)
         return True
 
     def disableExegolResources(self) -> None:
@@ -623,7 +634,7 @@ class ContainerConfig:
         if self.__exegol_resources:
             logger.verbose("Config: Disabling exegol resources volume")
             self.__exegol_resources = False
-            self.removeVolume(container_path='/opt/resources')
+            self.removeVolume(container_path=StaticContainerPath.EXEGOL_RESOURCES.value)
 
     def enableShellLogging(self, log_method: str, compress_mode: Optional[bool] = None) -> None:
         """Procedure to enable exegol shell logging feature"""
@@ -651,9 +662,9 @@ class ContainerConfig:
             return
         if not self.isJsonShellLoggingEnable():
             logger.verbose("Config: Enabling JSON shell logging")
-            self.addVolume(ConstantConfig.json_logging_zsh_context_path_obj, "/etc/zsh.d/shell_logging", read_only=True, must_exist=True)
-            self.addVolume(ConstantConfig.json_logging_bash_context_path_obj, "/etc/bash.d/shell_logging", read_only=True, must_exist=True)
-            self.addVolume(ConstantConfig.json_logger_context_path_obj, "/.exegol/json_shell_logger.py", read_only=True, must_exist=True)
+            self.addVolume(ConstantConfig.json_logging_zsh_context_path_obj, StaticContainerPath.JSON_SHELL_LOGGING_ZSH.value, read_only=True, must_exist=True)
+            self.addVolume(ConstantConfig.json_logging_bash_context_path_obj, StaticContainerPath.JSON_SHELL_LOGGING_BASH.value, read_only=True, must_exist=True)
+            self.addVolume(ConstantConfig.json_logger_context_path_obj, StaticContainerPath.JSON_SHELL_LOGGER.value, read_only=True, must_exist=True)
             host_log_path: Path = UserConfig().json_shell_logging_path
             # Create parent directory if needed
             if not host_log_path.exists():
@@ -669,17 +680,17 @@ class ContainerConfig:
                     _, user_gid = FsUtils.get_user_id()
                     file_gid = user_gid
                 os.chown(host_log_path, 0, file_gid)
-            self.addVolume(host_log_path, "/var/log/exegol/shell_commands.json")
+            self.addVolume(host_log_path, StaticContainerPath.JSON_SHELL_LOGGING_LOG.value)
             self.__json_shell_logging_path = host_log_path
 
     def __disableJsonLogging(self) -> None:
         """Procedure to disable exegol json shell logging feature"""
         if self.isJsonShellLoggingEnable():
             logger.verbose("Config: Disabling JSON shell logging")
-            self.removeVolume(container_path="/etc/zsh.d/shell_logging")
-            self.removeVolume(container_path="/etc/bash.d/shell_logging")
-            self.removeVolume(container_path="/.exegol/json_shell_logger.py")
-            self.removeVolume(container_path="/var/log/exegol/shell_commands.json")
+            self.removeVolume(container_path=StaticContainerPath.JSON_SHELL_LOGGING_ZSH.value)
+            self.removeVolume(container_path=StaticContainerPath.JSON_SHELL_LOGGING_BASH.value)
+            self.removeVolume(container_path=StaticContainerPath.JSON_SHELL_LOGGER.value)
+            self.removeVolume(container_path=StaticContainerPath.JSON_SHELL_LOGGING_LOG.value)
             self.__json_shell_logging_path = None
 
     def isDesktopEnabled(self) -> bool:
@@ -843,10 +854,10 @@ class ContainerConfig:
             self.__removeSysctl("net.ipv4.conf.all.src_valid_mark")
             self.removeDevice("/dev/net/tun")
             # Try to remove each possible volume
-            self.removeVolume(container_path="/.exegol/vpn/auth/creds.txt")
-            self.removeVolume(container_path="/.exegol/vpn/config/client.ovpn")
-            self.removeVolume(container_path="/.exegol/vpn/config")
-            self.removeVolume(container_path="/etc/wireguard/wg0.conf")
+            self.removeVolume(container_path=StaticContainerPath.OPENVPN_CREDS_FILE.value)
+            self.removeVolume(container_path=StaticContainerPath.OPENVPN_CONFIG_FILE.value)
+            self.removeVolume(container_path=StaticContainerPath.OPENVPN_CONFIG_DIR.value)
+            self.removeVolume(container_path=StaticContainerPath.WIREGUARD_CONFIG_FILE.value)
             return True
         return False
 
@@ -878,13 +889,13 @@ class ContainerConfig:
             if not skip_conf_checks:
                 await self.__checkVPNConfigDNS(vpn_path)
             # Configure VPN with single file
-            self.addVolume(vpn_path, "/.exegol/vpn/config/client.ovpn", read_only=True)
+            self.addVolume(vpn_path, StaticContainerPath.OPENVPN_CONFIG_FILE.value, read_only=True)
             ovpn_parameters.append("--config /.exegol/vpn/config/client.ovpn")
         else:
             # Configure VPN with directory
             logger.verbose("Folder detected for VPN configuration. "
                            "Only the first *.ovpn file will be automatically launched when the container starts.")
-            self.addVolume(vpn_path, "/.exegol/vpn/config", read_only=True)
+            self.addVolume(vpn_path, StaticContainerPath.OPENVPN_CONFIG_DIR.value, read_only=True)
             vpn_filename = None
             # Try to find the config file in order to configure the autostart command of the container
             for file in vpn_path.glob('*.ovpn'):
@@ -909,8 +920,8 @@ class ContainerConfig:
         if vpn_auth is not None:
             if vpn_auth.is_file():
                 logger.info(f"Adding VPN credentials from: {str(vpn_auth.absolute())}")
-                self.addVolume(vpn_auth, "/.exegol/vpn/auth/creds.txt", read_only=True)
-                ovpn_parameters.append("--auth-user-pass /.exegol/vpn/auth/creds.txt")
+                self.addVolume(vpn_auth, StaticContainerPath.OPENVPN_CREDS_FILE.value, read_only=True)
+                ovpn_parameters.append("--auth-user-pass " + StaticContainerPath.OPENVPN_CREDS_FILE.value)
             else:
                 # Supply a directory instead of a file for VPN authentication is not supported.
                 logger.critical(
@@ -927,7 +938,7 @@ class ContainerConfig:
         if ParametersManager().vpn_auth is not None:
             logger.warning("WireGuard setup doesn't support --vpn-auth parameter. It will be ignored.")
 
-        self.addVolume(wireguard_path, "/etc/wireguard/wg0.conf", read_only=True)
+        self.addVolume(wireguard_path, StaticContainerPath.WIREGUARD_CONFIG_FILE.value, read_only=True)
         wg_parameters.append("wg0")
 
         return ' '.join(wg_parameters)
@@ -1008,7 +1019,7 @@ class ContainerConfig:
     def getShellCommand() -> str:
         """Get container command for opening a new shell"""
         # Use a spawn.sh script to handle features with the wrapper
-        return "/.exegol/spawn.sh"
+        return StaticContainerPath.EXEGOL_SPAWN.value
 
     @staticmethod
     def generateRandomPassword(length: int = 30) -> str:
