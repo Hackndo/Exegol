@@ -676,10 +676,20 @@ class ContainerConfig:
                 # Create the log file with the right permission
                 host_log_path.touch(mode=0o640)
                 file_gid: int = UserConfig().json_shell_logging_gid
+                user_uid, user_gid = FsUtils.get_user_id()
                 if file_gid == -1:
-                    _, user_gid = FsUtils.get_user_id()
                     file_gid = user_gid
-                os.chown(host_log_path, 0, file_gid)
+                try:
+                    os.chown(host_log_path, 0, file_gid)
+                except PermissionError:
+                    # Mac user without can't chown to root
+                    try:
+                        os.chown(host_log_path, user_uid, file_gid)
+                    except PermissionError:
+                        logger.debug("Exegol dont have the permission to update JSON shell logging file permission")
+                        if UserConfig().json_shell_logging_gid == -1:
+                            logger.warning("Cannot set the right permissions on the JSON log file, you can run [orange3]manually[/orange3] this command from your [red]host[/red]:")
+                            logger.raw(f"sudo chown root:{file_gid} {host_log_path}")
             self.addVolume(host_log_path, StaticContainerPath.JSON_SHELL_LOGGING_LOG.value)
             self.__json_shell_logging_path = host_log_path
 
