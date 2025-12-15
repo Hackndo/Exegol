@@ -35,7 +35,7 @@ function shell_logging_precmd() {
   cmd="$LAST_COMMAND_RAW"
 
   # shellcheck disable=SC2296 (zsh syntax not supported by shellcheck)
-  cmd_raw="${(e)LAST_COMMAND_RAW_FULL}"
+  cmd_raw="$LAST_COMMAND_RAW_FULL"
 
   # Send metadata and write in background
   LOG_CWD="$PWD" \

@@ -115,6 +115,7 @@ config:
         
         # If the logs agent (e.g. Splunk Universal Forwarder, Elastic lightweight data shipper, Fluentd data collector etc) belongs to a different group than the user, it is possible to share the log files in read-only mode with another group.
         # Use -1 to refer to the group of the user who is using exegol.
+        # Only available for UNIX systems
         log_group_gid: {self.json_shell_logging_gid}
         
     # Configure your Exegol Desktop
